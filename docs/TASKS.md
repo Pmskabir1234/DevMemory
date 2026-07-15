@@ -271,10 +271,10 @@ Convert raw events into meaningful work sessions.
 
 - [x] Collect files
 - [x] Calculate duration
-- [ ] Extract activity
-- [ ] Build prompt
-- [ ] Call LLM
-- [ ] Save summary
+- [x] Extract activity
+- [x] Build prompt
+- [x] Call LLM
+- [x] Save summary
 
 Checkpoint
 
@@ -294,27 +294,27 @@ Generate useful memory.
 
 ## Prompt
 
-- [ ] Prompt template
-- [ ] File list
-- [ ] Activity summary
-- [ ] Pending work
+- [x] Prompt template
+- [x] File list
+- [x] Activity summary
+- [x] Pending work
 
 ---
 
 ## AI Service
 
-- [ ] OpenAI implementation
-- [ ] Gemini implementation
-- [ ] Configuration
+- [x] OpenAI implementation
+- [x] Gemini implementation
+- [x] Configuration
 
 ---
 
 ## Output Validation
 
-- [ ] Summary exists
-- [ ] Files listed
-- [ ] Work inferred
-- [ ] Pending extracted
+- [x] Summary exists
+- [x] Files listed
+- [x] Work inferred
+- [x] Pending extracted
 
 Checkpoint
 

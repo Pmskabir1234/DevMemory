@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
 from app.models.session import Session
+from app.models.event import Event
+from app.services.summary import generate_ai_summary
+
 
 
 def get_sessions(
@@ -34,21 +37,15 @@ def get_active_session(db: DBSession, workspace: str | None = None) -> Session |
 def end_active_session(db: DBSession, workspace: str | None = None) -> Session | None:
     session = get_active_session(db, workspace)
     if session:
-        # Generate summary
-        # For now, we use a simple placeholder. In Phase 6, we'll hook this up to an LLM service.
-        # But we also list the files involved.
-        files_list = []
-        if session.files:
-            try:
-                files_list = json.loads(session.files)
-            except Exception:
-                files_list = []
+        # Retrieve all events associated with this session ordered chronologically
+        events = db.query(Event).filter(Event.session_id == session.id).order_by(Event.timestamp.asc()).all()
 
-        files_str = ", ".join(files_list) if files_list else "no files"
-        session.summary = f"Completed development session. Touched: {files_str}."
-        session.pending_work = "No pending work recorded."
-        session.decisions = "No major decisions recorded."
-        
+        # Generate summary (AI or fallback)
+        ai_data = generate_ai_summary(session, events)
+        session.summary = ai_data.get("summary")
+        session.pending_work = ai_data.get("pending_work")
+        session.decisions = ai_data.get("decisions")
+
         db.add(session)
         db.commit()
         db.refresh(session)

@@ -40,6 +40,8 @@ def read_sessions(
                 workspace=s.workspace,
                 files=files_list,
                 summary=s.summary,
+                pending_work=s.pending_work,
+                decisions=s.decisions,
             )
         )
     return response

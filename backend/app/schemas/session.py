@@ -11,6 +11,8 @@ class SessionResponse(BaseModel):
     workspace: str
     files: List[str] | None = None
     summary: str | None = None
+    pending_work: str | None = None
+    decisions: str | None = None
 
     class Config:
         from_attributes = True
