@@ -154,21 +154,21 @@ Persist development memory.
 
 ## SQLite
 
-- [ ] Create database
-- [ ] Configure SQLAlchemy
-- [ ] Create Base model
+- [x] Create database
+- [x] Configure SQLAlchemy
+- [x] Create Base model
 
 ---
 
 ## Event Model
 
-- [ ] id
-- [ ] event_type
-- [ ] file_path
-- [ ] workspace
-- [ ] language
-- [ ] timestamp
-- [ ] metadata
+- [x] id
+- [x] event_type
+- [x] file_path
+- [x] workspace
+- [x] language
+- [x] timestamp
+- [x] metadata
 
 Checkpoint
 
@@ -178,11 +178,11 @@ Events table operational.
 
 ## Session Model
 
-- [ ] session_id
-- [ ] summary
-- [ ] start_time
-- [ ] end_time
-- [ ] duration
+- [x] session_id
+- [x] summary
+- [x] start_time
+- [x] end_time
+- [x] duration
 
 Checkpoint
 
@@ -192,8 +192,8 @@ Sessions table operational.
 
 ## Migration
 
-- [ ] Initial migration
-- [ ] Verify tables
+- [x] Initial migration
+- [x] Verify tables
 
 ---
 
@@ -209,10 +209,10 @@ Capture development events.
 
 ## Event API
 
-- [ ] POST /events
-- [ ] Validate payload
-- [ ] Save event
-- [ ] Return success
+- [x] POST /events
+- [x] Validate payload
+- [x] Save event
+- [x] Return success
 
 Checkpoint
 
@@ -224,23 +224,23 @@ Events stored.
 
 ### File
 
-- [ ] File Open
-- [ ] File Save
-- [ ] File Close
+- [x] File Open
+- [x] File Save
+- [x] File Close
 
 ### Workspace
 
-- [ ] Workspace Open
-- [ ] Workspace Close
+- [x] Workspace Open
+- [x] Workspace Close
 
 ### Diagnostics
 
-- [ ] Error
-- [ ] Warning
+- [x] Error
+- [x] Warning
 
 ### Git
 
-- [ ] Commit
+- [x] Commit
 
 Checkpoint
 
@@ -260,17 +260,17 @@ Convert raw events into meaningful work sessions.
 
 ## Session Detection
 
-- [ ] Detect inactivity
-- [ ] Start session
-- [ ] End session
-- [ ] Store timestamps
+- [x] Detect inactivity
+- [x] Start session
+- [x] End session
+- [x] Store timestamps
 
 ---
 
 ## Session Summary
 
-- [ ] Collect files
-- [ ] Calculate duration
+- [x] Collect files
+- [x] Calculate duration
 - [ ] Extract activity
 - [ ] Build prompt
 - [ ] Call LLM

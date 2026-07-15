@@ -6,7 +6,7 @@ from app.db.session import Base
 class Session(Base):
     __tablename__ = "sessions"
 
-    id = Column(Integer, primary key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True)
     summary = Column(Text, nullable=True)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
