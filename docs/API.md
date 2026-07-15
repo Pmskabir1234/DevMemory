@@ -133,7 +133,14 @@ Explicitly terminates the current active session, triggering an AI summary gener
 Searches sessions or answers natural language questions using memory context.
 
 **Query Parameters**
-- `query` (string, required) - e.g. "What did I work on yesterday?" or "auth.py"
+- `query` (string, required) — natural language question or keyword. Examples:
+  - `"What did I work on yesterday?"`
+  - `"auth.py"`
+  - `"resume"`
+  - `"What files did I change today?"`
+- `workspace` (string, optional) — filter results to a specific workspace path.
+
+**Date keywords recognized:** `today`, `yesterday`, `this week`, `last week`
 
 **Response**
 * Code: `200 OK`
@@ -151,3 +158,8 @@ Searches sessions or answers natural language questions using memory context.
   ]
 }
 ```
+
+**Notes**
+- If Gemini or OpenAI API keys are configured, a natural-language LLM answer is generated.
+- If no API keys are set, a deterministic local answer is built from session metadata.
+- If no sessions match the query, `matched_sessions` will be `[]` and `answer` will state no history was found.

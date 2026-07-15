@@ -22,11 +22,11 @@ Only ONE task should ever be marked [>] at a time.
 
 Overall Progress
 
-□□□□□□□□□□ 0%
+■■■■■■■□□□ 70%
 
 Current Phase
 
-Phase 1 — Foundation
+Phase 3 — VS Code Extension
 
 Current Sprint
 
@@ -334,9 +334,9 @@ CLI-first experience.
 
 ## CLI Setup
 
-- [ ] Install Typer
-- [ ] CLI entrypoint
-- [ ] Help command
+- [x] Install Typer
+- [x] CLI entrypoint
+- [x] Help command
 
 ---
 
@@ -344,31 +344,31 @@ CLI-first experience.
 
 ### History
 
-- [ ] history
+- [x] history
 
 ### Resume
 
-- [ ] resume
+- [x] resume
 
 ### Ask
 
-- [ ] ask
+- [x] ask
 
 ### Search
 
-- [ ] search
+- [x] search
 
 ### Sessions
 
-- [ ] sessions
+- [x] sessions
 
 ### Health
 
-- [ ] health
+- [x] health
 
 ### Version
 
-- [ ] version
+- [x] version
 
 Checkpoint
 
@@ -432,10 +432,10 @@ Answer developer questions.
 
 ## Search
 
-- [ ] Find sessions
-- [ ] Filter by date
-- [ ] Filter by file
-- [ ] Filter by workspace
+- [x] Find sessions
+- [x] Filter by date
+- [x] Filter by file
+- [x] Filter by workspace
 
 ---
 
@@ -443,15 +443,15 @@ Answer developer questions.
 
 Support
 
-- [ ] What did I work on yesterday?
+- [x] What did I work on yesterday?
 
-- [ ] Which file did I edit last?
+- [x] Which file did I edit last?
 
-- [ ] Resume previous work
+- [x] Resume previous work
 
-- [ ] Show today's changes
+- [x] Show today's changes
 
-- [ ] Show authentication work
+- [x] Show authentication work
 
 Checkpoint
 

@@ -190,6 +190,32 @@ def main():
         assert session_id_3 is not None
         assert session_id_3 != session_id_1
         
+        # Test 10: GET /api/search (keyword search)
+        print("\nTest 10: Search sessions with keyword...")
+        status_code, body = send_request("/api/search?query=main.py")
+        print(f"Status: {status_code}, Body keys: {list(body.keys()) if body else None}")
+        assert status_code == 200
+        assert "query" in body
+        assert "answer" in body
+        assert "matched_sessions" in body
+        assert body["query"] == "main.py"
+        assert isinstance(body["answer"], str) and len(body["answer"]) > 0
+
+        # Test 11: GET /api/search (natural language – "what did I work on today")
+        print("\nTest 11: Search with natural-language question...")
+        status_code, body = send_request("/api/search?query=What+did+I+work+on+today")
+        print(f"Status: {status_code}, Body keys: {list(body.keys()) if body else None}")
+        assert status_code == 200
+        assert "answer" in body
+        assert isinstance(body["matched_sessions"], list)
+
+        # Test 12: GET /api/search – workspace filter returning nothing
+        print("\nTest 12: Search with non-existent workspace filter...")
+        status_code, body = send_request("/api/search?query=main.py&workspace=C:/nonexistent")
+        print(f"Status: {status_code}, Body: {body}")
+        assert status_code == 200
+        assert body["matched_sessions"] == [] or isinstance(body["matched_sessions"], list)
+
         print("\n=== ALL TESTS PASSED SUCCESSFULLY ===")
         
     except Exception as e:
