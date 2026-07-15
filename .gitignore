@@ -1,0 +1,32 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and Editor settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# SQLite database
+*.db
+*.sqlite3
+
+# Node modules (for VS Code extension)
+node_modules/
+out/
+dist/
+*.vsix
+
+# OS files
+.DS_Store
+Thumbs.db
