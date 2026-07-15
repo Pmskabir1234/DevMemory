@@ -1,34 +1,199 @@
+"""
+Session summary service.
+
+Primary LLM  : Google Gemma (HuggingFace Inference API)
+Framework    : LangChain — ChatPromptTemplate | ChatHuggingFace | JsonOutputParser / StrOutputParser
+Fallback     : Deterministic local summary (no API required)
+
+Chains
+------
+_summary_chain()  →  prompt | chat_model | JsonOutputParser(pydantic=SessionSummary)
+_search_chain()   →  prompt | chat_model | StrOutputParser
+
+Both chains are built lazily (once per process) so the HuggingFaceEndpoint is
+not instantiated until the first request that actually needs the LLM.
+"""
+from __future__ import annotations
+
 import json
-import urllib.request
-import urllib.error
 import logging
-from sqlalchemy.orm import Session as DBSession
+from functools import lru_cache
+from typing import List
+
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
-from app.models.session import Session
 from app.models.event import Event
+from app.models.session import Session
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Output schema  (LangChain JsonOutputParser uses this for structured output)
+# ---------------------------------------------------------------------------
+
+class SessionSummaryOutput(BaseModel):
+    """Schema that Gemma must conform to when summarising a session."""
+
+    summary: str = Field(description="One-sentence summary of what was worked on.")
+    decisions: List[str] = Field(description="Key decisions or actions taken during the session.")
+    pending_work: List[str] = Field(description="Unfinished tasks or next steps remaining.")
+
+
+# ---------------------------------------------------------------------------
+# Lazy chain builders  (built once, reused across requests)
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def _build_chat_model():
+    """Instantiate ChatHuggingFace wrapping HuggingFaceEndpoint (Gemma). Cached."""
+    from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+
+    llm = HuggingFaceEndpoint(
+        repo_id=settings.HF_MODEL_ID,
+        task="text-generation",
+        max_new_tokens=1024,
+        temperature=0.2,
+        repetition_penalty=1.05,
+        huggingfacehub_api_token=settings.HF_API_KEY,
+    )
+    return ChatHuggingFace(llm=llm, verbose=False)
+
+
+@lru_cache(maxsize=1)
+def _summary_chain():
+    """
+    LCEL chain for session summarisation.
+
+    Chain:  ChatPromptTemplate | ChatHuggingFace | JsonOutputParser
+    Output: dict with keys summary, decisions, pending_work
+    """
+    from langchain_core.output_parsers import JsonOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+
+    parser = JsonOutputParser(pydantic_object=SessionSummaryOutput)
+
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            "You are an expert developer activity analyzer. "
+            "Follow the output format instructions precisely.\n\n"
+            "{format_instructions}",
+        ),
+        (
+            "human",
+            "Analyse the development session below and return a structured JSON summary.\n\n"
+            "Workspace : {workspace}\n"
+            "Duration  : {duration_seconds} seconds\n"
+            "Files     : {files}\n\n"
+            "Events (chronological):\n{events}",
+        ),
+    ]).partial(format_instructions=parser.get_format_instructions())
+
+    return prompt | _build_chat_model() | parser
+
+
+@lru_cache(maxsize=1)
+def _search_chain():
+    """
+    LCEL chain for natural-language search answers.
+
+    Chain:  ChatPromptTemplate | ChatHuggingFace | StrOutputParser
+    Output: plain-text answer string
+    """
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            "You are a developer assistant with access to a developer's work history. "
+            "Answer questions concisely and helpfully using only the sessions provided. "
+            "Respond in plain text — no JSON, no markdown.",
+        ),
+        (
+            "human",
+            "Question: {query}\n\nWork History:\n{context}",
+        ),
+    ])
+
+    return prompt | _build_chat_model() | StrOutputParser()
+
+
+# ---------------------------------------------------------------------------
+# Input formatters
+# ---------------------------------------------------------------------------
+
+def _format_events(events: list[Event]) -> str:
+    lines: list[str] = []
+    for event in events:
+        time_str = event.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{time_str}] {event.event_type}"
+        if event.file_path:
+            line += f" — {event.file_path}"
+        if event.metadata_:
+            try:
+                meta = json.loads(event.metadata_)
+                useful = {k: meta[k] for k in ("message", "severity", "commit_hash") if k in meta}
+                if useful:
+                    line += f"  {json.dumps(useful)}"
+            except Exception:
+                pass
+        lines.append(line)
+    return "\n".join(lines) if lines else "(no events)"
+
+
+def _format_session_context(sessions: list[Session]) -> str:
+    parts: list[str] = []
+    for s in sessions:
+        files_list: list[str] = []
+        if s.files:
+            try:
+                files_list = json.loads(s.files)
+            except Exception:
+                pass
+        parts.append(
+            f"[Session {s.id} — {s.start_time.strftime('%Y-%m-%d %H:%M')}]\n"
+            f"Summary  : {s.summary or 'N/A'}\n"
+            f"Files    : {', '.join(files_list) or 'N/A'}\n"
+            f"Decisions: {s.decisions or 'N/A'}\n"
+            f"Pending  : {s.pending_work or 'N/A'}"
+        )
+    return "\n\n---\n\n".join(parts) if parts else "No relevant sessions found."
+
+
+# ---------------------------------------------------------------------------
+# Output normaliser  (list[str] → bullet string)
+# ---------------------------------------------------------------------------
+
+def _to_bullets(val) -> str:
+    if isinstance(val, list):
+        return "\n".join(f"- {item}" for item in val if str(item).strip())
+    return str(val).strip()
+
+
+# ---------------------------------------------------------------------------
+# Local deterministic fallback  (no API required)
+# ---------------------------------------------------------------------------
+
 def generate_local_fallback(session: Session, events: list[Event]) -> dict:
-    files_list = []
+    """Build a deterministic summary from raw event data without any LLM call."""
+    files_list: list[str] = []
     if session.files:
         try:
             files_list = json.loads(session.files)
         except Exception:
-            files_list = []
+            pass
 
     files_str = ", ".join(files_list) if files_list else "no files"
+    commit_messages: list[str] = []
+    diagnostics: list[str] = []
 
-    # Analyze events for fallback summary
-    commit_messages = []
-    diagnostics = []
     for event in events:
         if event.event_type == "GitCommit" and event.metadata_:
             try:
-                meta = json.loads(event.metadata_)
-                msg = meta.get("message")
+                msg = json.loads(event.metadata_).get("message")
                 if msg:
                     commit_messages.append(msg)
             except Exception:
@@ -36,204 +201,106 @@ def generate_local_fallback(session: Session, events: list[Event]) -> dict:
         elif event.event_type == "Diagnostic" and event.metadata_:
             try:
                 meta = json.loads(event.metadata_)
-                severity = meta.get("severity", "Warning")
+                sev = meta.get("severity", "Warning")
                 msg = meta.get("message")
                 if msg:
-                    diagnostics.append(f"[{severity}] {event.file_path}: {msg}")
+                    diagnostics.append(f"[{sev}] {event.file_path}: {msg}")
             except Exception:
                 pass
 
-    if commit_messages:
-        summary = f"Worked on development task. Commits: {'; '.join(commit_messages)}."
-    elif files_list:
-        summary = f"Completed development session. Touched: {files_str}."
-    else:
-        summary = "Completed development session with no modified files."
+    summary = (
+        f"Worked on development task. Commits: {'; '.join(commit_messages)}."
+        if commit_messages
+        else (
+            f"Completed development session. Touched: {files_str}."
+            if files_list
+            else "Completed development session with no modified files."
+        )
+    )
 
-    # Build decisions
-    decisions_list = []
-    if commit_messages:
-        for msg in commit_messages:
-            decisions_list.append(f"Committed: {msg}")
-    elif files_list:
-        for f in files_list:
-            decisions_list.append(f"Modified and saved {f}")
-    else:
-        decisions_list.append("No major decisions recorded.")
-
-    # Build pending work
-    pending_list = []
-    if diagnostics:
-        for diag in diagnostics:
-            pending_list.append(f"Resolve diagnostic error/warning: {diag}")
-    elif files_list:
-        pending_list.append(f"Continue working on changes in: {files_str}")
-    else:
-        pending_list.append("Verify changes and plan next steps.")
+    decisions = (
+        [f"Committed: {m}" for m in commit_messages]
+        or [f"Modified and saved {f}" for f in files_list]
+        or ["No major decisions recorded."]
+    )
+    pending = (
+        [f"Resolve diagnostic: {d}" for d in diagnostics]
+        or ([f"Continue working on changes in: {files_str}"] if files_list else [])
+        or ["Verify changes and plan next steps."]
+    )
 
     return {
         "summary": summary,
-        "decisions": "\n".join(f"- {d}" for d in decisions_list),
-        "pending_work": "\n".join(f"- {p}" for p in pending_list),
+        "decisions": _to_bullets(decisions),
+        "pending_work": _to_bullets(pending),
     }
 
 
-def parse_llm_json(text: str) -> dict:
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].startswith("```"):
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-
-    try:
-        data = json.loads(text)
-    except Exception as e:
-        logger.warning(f"Failed to parse JSON from LLM response: {e}. Response was: {text}")
-        raise ValueError("Invalid JSON response from LLM") from e
-
-    decisions = data.get("decisions", [])
-    if isinstance(decisions, list):
-        decisions_str = "\n".join(f"- {d}" for d in decisions)
-    else:
-        decisions_str = str(decisions)
-
-    pending_work = data.get("pending_work", [])
-    if isinstance(pending_work, list):
-        pending_work_str = "\n".join(f"- {p}" for p in pending_work)
-    else:
-        pending_work_str = str(pending_work)
-
-    return {
-        "summary": data.get("summary", "No summary generated."),
-        "decisions": decisions_str or "No major decisions recorded.",
-        "pending_work": pending_work_str or "No pending work recorded.",
-    }
-
-
-def call_gemini(prompt: str) -> dict:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }],
-        "generationConfig": {
-            "responseMimeType": "application/json"
-        }
-    }
-
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-
-    with urllib.request.urlopen(req, timeout=10) as response:
-        resp_data = json.loads(response.read().decode("utf-8"))
-
-    text_content = resp_data["candidates"][0]["content"]["parts"][0]["text"]
-    return parse_llm_json(text_content)
-
-
-def call_openai(prompt: str) -> dict:
-    url = "https://api.openai.com/v1/chat/completions"
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "response_format": {"type": "json_object"}
-    }
-
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {settings.OPENAI_API_KEY}"
-        },
-        method="POST"
-    )
-
-    with urllib.request.urlopen(req, timeout=10) as response:
-        resp_data = json.loads(response.read().decode("utf-8"))
-
-    text_content = resp_data["choices"][0]["message"]["content"]
-    return parse_llm_json(text_content)
-
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def generate_ai_summary(session: Session, events: list[Event]) -> dict:
-    files_list = []
+    """
+    Generate a session summary.
+
+    Chain: ChatPromptTemplate | ChatHuggingFace | JsonOutputParser(SessionSummaryOutput)
+
+    Falls back to generate_local_fallback() if the key is missing or the chain fails.
+    """
+    if not settings.HF_API_KEY:
+        logger.info("Session %s: no HF_API_KEY — using local fallback.", session.id)
+        return generate_local_fallback(session, events)
+
+    files_list: list[str] = []
     if session.files:
         try:
             files_list = json.loads(session.files)
         except Exception:
-            files_list = []
+            pass
 
-    # Compile chronological sequence of events
-    event_details = []
-    for event in events:
-        time_str = event.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        detail = f"[{time_str}] {event.event_type}"
-        if event.file_path:
-            detail += f" - File: {event.file_path}"
-        if event.metadata_:
-            try:
-                meta = json.loads(event.metadata_)
-                useful_meta = {}
-                if "message" in meta:
-                    useful_meta["message"] = meta["message"]
-                if "severity" in meta:
-                    useful_meta["severity"] = meta["severity"]
-                if "commit_hash" in meta:
-                    useful_meta["commit_hash"] = meta["commit_hash"]
-                if useful_meta:
-                    detail += f" (Metadata: {json.dumps(useful_meta)})"
-            except Exception:
-                pass
-        event_details.append(detail)
+    try:
+        chain = _summary_chain()
+        result: dict = chain.invoke({
+            "workspace": session.workspace,
+            "duration_seconds": session.duration_seconds,
+            "files": files_list,
+            "events": _format_events(events),
+        })
+        logger.info("Session %s: Gemma summary generated via LangChain.", session.id)
+        return {
+            "summary": result.get("summary", "No summary generated."),
+            "decisions": _to_bullets(result.get("decisions", [])) or "No major decisions recorded.",
+            "pending_work": _to_bullets(result.get("pending_work", [])) or "No pending work recorded.",
+        }
+    except Exception as exc:
+        logger.warning(
+            "Session %s: LangChain/Gemma summary failed (%s). Using local fallback.",
+            session.id,
+            exc,
+        )
+        return generate_local_fallback(session, events)
 
-    formatted_events = "\n".join(event_details)
 
-    prompt = (
-        "You are an expert developer activity analyzer. Analyze the sequence of events captured during a coding session and generate a concise summary.\n\n"
-        f"Session Workspace: {session.workspace}\n"
-        f"Session Duration: {session.duration_seconds} seconds\n"
-        f"Files Touched: {files_list}\n\n"
-        "Captured Events (chronological):\n"
-        f"{formatted_events}\n\n"
-        "Based on this activity, please provide:\n"
-        "1. A concise, one-sentence summary of what was being built or worked on.\n"
-        "2. A bulleted list of key decisions made (inferred from files modified, Git commits, etc.).\n"
-        "3. A bulleted list of pending/unfinished work (e.g., remaining files to edit, unresolved errors/warnings, or planned tasks).\n\n"
-        "Your response must be a valid JSON object with the following format:\n"
-        "{\n"
-        '  "summary": "one-sentence summary of the session",\n'
-        '  "decisions": [\n'
-        '    "Decision 1",\n'
-        '    "Decision 2"\n'
-        '  ],\n'
-        '  "pending_work": [\n'
-        '    "Pending work item 1",\n'
-        '    "Pending work item 2"\n'
-        '  ]\n'
-        "}\n"
-        "Do not include any markdown formatting (like ```json ... ```) or extra text outside the JSON object."
-    )
+def generate_search_answer(query: str, sessions: list[Session]) -> str | None:
+    """
+    Generate a natural-language answer for a search query.
 
-    if settings.GEMINI_API_KEY:
-        try:
-            return call_gemini(prompt)
-        except Exception as e:
-            logger.warning(f"Gemini API call failed: {e}. Trying OpenAI or falling back.")
+    Chain: ChatPromptTemplate | ChatHuggingFace | StrOutputParser
 
-    if settings.OPENAI_API_KEY:
-        try:
-            return call_openai(prompt)
-        except Exception as e:
-            logger.warning(f"OpenAI API call failed: {e}. Falling back to local summary.")
+    Returns None if the key is missing or the chain fails (caller uses local fallback).
+    """
+    if not settings.HF_API_KEY or not sessions:
+        return None
 
-    return generate_local_fallback(session, events)
+    try:
+        chain = _search_chain()
+        answer: str = chain.invoke({
+            "query": query,
+            "context": _format_session_context(sessions),
+        })
+        logger.info("Search query answered via LangChain/Gemma.")
+        return answer.strip()
+    except Exception as exc:
+        logger.warning("LangChain search answer failed (%s). Caller will use local fallback.", exc)
+        return None

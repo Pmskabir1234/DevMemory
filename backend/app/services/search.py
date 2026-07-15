@@ -1,17 +1,19 @@
 """
 Search service: find sessions matching a natural language query or keyword,
-then optionally use an LLM to generate a conversational answer.
+then use Gemma (via LangChain + HuggingFace) to generate a conversational answer.
+
+LLM calls are delegated to summary.generate_search_answer() so all model
+config (prompt template, chain, parser) lives in one place.
 """
 import json
 import logging
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session as DBSession
 
 from app.models.session import Session
-from app.services.summary import call_gemini, call_openai
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -24,25 +26,22 @@ logger = logging.getLogger(__name__)
 def _today_range():
     today = datetime.now(timezone.utc).replace(tzinfo=None).date()
     start = datetime(today.year, today.month, today.day)
-    end = start + timedelta(days=1)
-    return start, end
+    return start, start + timedelta(days=1)
 
 
 def _yesterday_range():
     yesterday = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)).date()
     start = datetime(yesterday.year, yesterday.month, yesterday.day)
-    end = start + timedelta(days=1)
-    return start, end
+    return start, start + timedelta(days=1)
 
 
 def _week_range():
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    start = now - timedelta(days=7)
-    return start, now
+    return now - timedelta(days=7), now
 
 
 def _detect_date_filter(query: str):
-    """Return (start, end) or (None, None) based on natural-language date clues."""
+    """Return (start, end) datetime pair or (None, None) based on temporal keywords."""
     q = query.lower()
     if "yesterday" in q:
         return _yesterday_range()
@@ -57,7 +56,7 @@ def _detect_date_filter(query: str):
 # Keyword extraction
 # ---------------------------------------------------------------------------
 
-_DATE_STOP_WORDS = {
+_STOP_WORDS = {
     "what", "did", "i", "work", "on", "yesterday", "today", "this",
     "week", "last", "when", "show", "me", "which", "file", "files",
     "edited", "edit", "changes", "made", "do", "sessions", "session",
@@ -69,9 +68,8 @@ _DATE_STOP_WORDS = {
 
 
 def _extract_keywords(query: str) -> List[str]:
-    """Return meaningful keywords from the query for session text search."""
     tokens = query.lower().replace("?", "").replace(".", "").split()
-    return [t for t in tokens if t not in _DATE_STOP_WORDS and len(t) > 2]
+    return [t for t in tokens if t not in _STOP_WORDS and len(t) > 2]
 
 
 # ---------------------------------------------------------------------------
@@ -86,39 +84,39 @@ def search_sessions(
 ) -> List[Session]:
     """
     Return sessions relevant to *query*.
+
     Strategy:
-      1. Apply a date filter if the query contains temporal language.
-      2. Apply keyword filtering against summary, files, decisions, pending_work.
-      3. If no keyword match found, return the most recent sessions.
+      1. Apply a date filter for temporal language (today/yesterday/week).
+      2. Apply ILIKE keyword filtering across all text columns.
+      3. Fallback: return the most recent sessions if nothing matched.
     """
     date_start, date_end = _detect_date_filter(query)
     keywords = _extract_keywords(query)
 
-    base_query = db.query(Session).filter(Session.summary.isnot(None))
-
+    base = db.query(Session).filter(Session.summary.isnot(None))
     if workspace:
-        base_query = base_query.filter(Session.workspace == workspace)
-
+        base = base.filter(Session.workspace == workspace)
     if date_start:
-        base_query = base_query.filter(Session.start_time >= date_start)
+        base = base.filter(Session.start_time >= date_start)
     if date_end:
-        base_query = base_query.filter(Session.start_time < date_end)
+        base = base.filter(Session.start_time < date_end)
 
-    # Apply keyword filters (OR across all text columns)
     if keywords:
         conditions = []
         for kw in keywords:
-            like_pat = f"%{kw}%"
-            conditions.append(Session.summary.ilike(like_pat))
-            conditions.append(Session.files.ilike(like_pat))
-            conditions.append(Session.decisions.ilike(like_pat))
-            conditions.append(Session.pending_work.ilike(like_pat))
-            conditions.append(Session.workspace.ilike(like_pat))
-        base_query = base_query.filter(or_(*conditions))
+            pat = f"%{kw}%"
+            conditions.extend([
+                Session.summary.ilike(pat),
+                Session.files.ilike(pat),
+                Session.decisions.ilike(pat),
+                Session.pending_work.ilike(pat),
+                Session.workspace.ilike(pat),
+            ])
+        base = base.filter(or_(*conditions))
 
-    results = base_query.order_by(Session.start_time.desc()).limit(limit).all()
+    results = base.order_by(Session.start_time.desc()).limit(limit).all()
 
-    # Fallback: if date-bounded search yielded nothing, widen to recent sessions
+    # Widen search if date/keyword filtering returned nothing
     if not results and (date_start or keywords):
         fallback = db.query(Session).filter(Session.summary.isnot(None))
         if workspace:
@@ -129,51 +127,19 @@ def search_sessions(
 
 
 # ---------------------------------------------------------------------------
-# LLM answer generation
+# Local deterministic answer (no LLM)
 # ---------------------------------------------------------------------------
 
-def _build_search_prompt(query: str, sessions: List[Session]) -> str:
-    sessions_text = []
-    for s in sessions:
-        files_list = []
-        if s.files:
-            try:
-                files_list = json.loads(s.files)
-            except Exception:
-                pass
-        date_str = s.start_time.strftime("%Y-%m-%d %H:%M")
-        sessions_text.append(
-            f"[Session {s.id} — {date_str}]\n"
-            f"Summary: {s.summary or 'N/A'}\n"
-            f"Files: {', '.join(files_list) or 'N/A'}\n"
-            f"Decisions: {s.decisions or 'N/A'}\n"
-            f"Pending: {s.pending_work or 'N/A'}"
-        )
-
-    context = "\n\n---\n\n".join(sessions_text) if sessions_text else "No relevant sessions found."
-
-    return (
-        "You are a developer assistant with access to a developer's work history.\n"
-        "Answer the following question concisely and helpfully, based only on the sessions provided.\n\n"
-        f"Question: {query}\n\n"
-        "Work History:\n"
-        f"{context}\n\n"
-        "Provide a direct, concise answer in plain text (not JSON). "
-        "If no relevant sessions exist, say so clearly."
-    )
-
-
 def _local_answer(query: str, sessions: List[Session]) -> str:
-    """Generate a simple deterministic answer when no LLM is configured."""
     if not sessions:
         return "No matching sessions found in your development history."
 
     q = query.lower()
-    lines = []
+    lines: list[str] = []
 
     if "resume" in q or "last" in q:
         s = sessions[0]
-        files_list = []
+        files_list: list[str] = []
         if s.files:
             try:
                 files_list = json.loads(s.files)
@@ -195,82 +161,37 @@ def _local_answer(query: str, sessions: List[Session]) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def answer_query(
     db: DBSession,
     query: str,
     workspace: str | None = None,
 ) -> dict:
     """
-    Main entry point: search sessions, then generate a natural-language answer.
-    Returns a dict with 'query', 'answer', and 'matched_sessions'.
+    Search sessions, then generate a natural-language answer via Gemma (or local fallback).
+    Returns {'query', 'answer', 'matched_sessions'}.
     """
+    # Import here to avoid circular imports at module load time
+    from app.services.summary import generate_search_answer
+
     sessions = search_sessions(db, query, workspace=workspace)
 
-    # Build the matched_sessions summary list (for API response)
-    matched = []
-    for s in sessions:
-        matched.append(
-            {
-                "id": s.id,
-                "date": s.start_time.strftime("%Y-%m-%d"),
-                "summary": s.summary or "",
-            }
-        )
+    matched = [
+        {
+            "id": s.id,
+            "date": s.start_time.strftime("%Y-%m-%d"),
+            "summary": s.summary or "",
+        }
+        for s in sessions
+    ]
 
-    # Try LLM answer
-    answer = None
-    if sessions:
-        prompt = _build_search_prompt(query, sessions)
-        if settings.GEMINI_API_KEY:
-            try:
-                # Gemini returns JSON by default; ask for plain text here
-                plain_prompt = prompt + "\n\nRespond with plain text only, no JSON."
-                import urllib.request
-                import urllib.error
+    # Try LangChain / Gemma answer first
+    answer = generate_search_answer(query, sessions)
 
-                url = (
-                    f"https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"gemini-2.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
-                )
-                payload = {
-                    "contents": [{"parts": [{"text": plain_prompt}]}],
-                }
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    resp_data = json.loads(resp.read().decode("utf-8"))
-                answer = resp_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            except Exception as e:
-                logger.warning(f"Gemini search answer failed: {e}")
-
-        if answer is None and settings.OPENAI_API_KEY:
-            try:
-                import urllib.request
-
-                url = "https://api.openai.com/v1/chat/completions"
-                payload = {
-                    "model": "gpt-4o-mini",
-                    "messages": [{"role": "user", "content": prompt}],
-                }
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                    },
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    resp_data = json.loads(resp.read().decode("utf-8"))
-                answer = resp_data["choices"][0]["message"]["content"].strip()
-            except Exception as e:
-                logger.warning(f"OpenAI search answer failed: {e}")
-
+    # Fall back to deterministic local answer
     if answer is None:
         answer = _local_answer(query, sessions)
 

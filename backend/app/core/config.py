@@ -21,7 +21,11 @@ class Settings(BaseModel):
     # Session configuration
     SESSION_TIMEOUT_MINUTES: int = int(os.getenv("SESSION_TIMEOUT_MINUTES", "15"))
 
-    # LLM settings
+    # LLM settings — primary: HuggingFace (Gemma via langchain-huggingface)
+    HF_API_KEY: str | None = os.getenv("HF_API_KEY")
+    HF_MODEL_ID: str = os.getenv("HF_MODEL_ID", "google/gemma-3-27b-it")
+
+    # Legacy keys kept for fallback awareness (not used for LLM calls)
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
 

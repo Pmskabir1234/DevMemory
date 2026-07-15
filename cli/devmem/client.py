@@ -56,9 +56,8 @@ def _request(path: str, method: str = "GET", params: dict | None = None, data: d
         ) from exc
 
 
-# ---------------------------------------------------------------------------
+
 # API convenience methods
-# ---------------------------------------------------------------------------
 
 def health() -> dict:
     return _request("/health")
