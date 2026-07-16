@@ -5,7 +5,70 @@ Version: 1.0
 
 ------------------------------------------------------------
 
-Session Number: 005
+Session Number: 006
+
+Date: 2026-07-16
+
+Duration: 45 minutes
+
+Completed Tasks:
+
+- EXT-001 (VS Code Extension — full implementation)
+
+Current Task:
+
+- None (Next up: Testing Phase)
+
+Files Modified:
+
+- extension/src/extension.ts (new)
+- extension/src/client.ts (new)
+- extension/src/eventBuilder.ts (new)
+- extension/src/filter.ts (new)
+- extension/src/helpers.ts (new)
+- extension/test/extension.test.ts (new)
+- extension/test/runTests.ts (new)
+- extension/package.json (new)
+- extension/tsconfig.json (new)
+- extension/.vscodeignore (new)
+- extension/README.md
+- docs/TASKS.md
+- docs/PROGRESS.md
+
+Decisions Made:
+
+- Pure helpers extracted to helpers.ts (no vscode import) so tests run in plain Node without mocking the vscode module.
+- retryDelayMs exposed as a parameter on sendEvent so tests pass 0 and run instantly.
+- Used Node 18 built-in fetch — no extra dependencies.
+- All VS Code callbacks wrapped in try/catch so the extension can never crash VS Code.
+
+Problems Encountered:
+
+- None
+
+Solutions:
+
+- None
+
+Next Task:
+
+- TEST-001 (Unit Tests — Backend)
+
+Estimated Next Session:
+
+- 60 minutes
+
+Commit Hash:
+
+- -
+
+Notes:
+
+- TypeScript compiles with zero errors. 14/14 unit tests pass covering filter logic, path relativisation, and HTTP retry behaviour.
+
+------------------------------------------------------------
+
+
 
 Date: 2026-07-15
 
@@ -208,15 +271,15 @@ It should always answer:
 
 Overall Progress
 
-■■■■■■■□□□ 70%
+■■■■■■■■□□ 80%
 
 Current Phase
 
-Phase 3 — VS Code Extension
+Phase 4 — Testing & Polish
 
 Current Sprint
 
-Sprint 2
+Sprint 3
 
 Project Status
 
@@ -228,11 +291,11 @@ Project Status
 
 Task ID
 
-EXT-001
+TEST-001
 
 Task Name
 
-VS Code Extension Setup
+Backend Unit Tests
 
 Status
 
@@ -252,11 +315,11 @@ Estimated Completion
 
 Task ID
 
-CLI-001 / BE-007
+EXT-001
 
 Task
 
-CLI Setup and Commands + Search Endpoint
+VS Code Extension — Full Implementation
 
 Completed
 
@@ -264,7 +327,7 @@ YES
 
 Completion Date
 
-2026-07-15
+2026-07-16
 
 ---
 
@@ -272,15 +335,15 @@ Completion Date
 
 Task ID
 
-EXT-001
+TEST-001
 
 Task
 
-VS Code Extension Setup
+Backend Unit Tests
 
 Expected Outcome
 
-Extension skeleton initialized with event listeners for file open, save, close, and diagnostics. Events sent to backend API.
+Pytest-based unit tests for services (event, session, summary, search) and API endpoints.
 
 ---
 
@@ -288,11 +351,11 @@ Extension skeleton initialized with event listeners for file open, save, close, 
 
 Current Module
 
-VS Code Extension
+Testing
 
 Current File
 
-extension/
+backend/tests/
 
 Current Branch
 
@@ -315,15 +378,16 @@ Completed
 ✓ API.md
 ✓ DATA_MODEL.md
 ✓ Event Collection & Session Builder APIs
-✓ AI Summary Service & Fallbacks
+✓ AI Summary Service & Fallbacks (LangChain + Gemma)
 ✓ CLI Commands (all 7)
 ✓ Search/Query Endpoint
+✓ VS Code Extension (all events, retry, status bar)
 
 Remaining
 
 README.md
-VS Code Extension Integration
 Unit Tests (Phase 10)
+Packaging & Release (Phase 11)
 
 ---
 
@@ -356,7 +420,12 @@ Notes: Verified all endpoints with automated integration tests. SQLite database 
 
 ---
 
-## Session 005
+## Session 006
+
+Date: 2026-07-16
+Duration: 45 minutes
+Completed: Implemented full VS Code extension — 5 source files, 2 test files, TypeScript compiles clean, 14/14 unit tests passing.
+Notes: Pure helpers extracted for testability. Node fetch used with retry logic. All VS Code callbacks are exception-safe.
 
 Date: 2026-07-15
 Duration: 30 minutes
@@ -437,8 +506,12 @@ LLM Answer: Yes (Gemini / OpenAI / local fallback)
 
 # CURRENT EXTENSION STATUS
 
-Extension: Not Started
-Event Listeners: 0
+Extension: Complete
+Event Listeners: 6 (FileOpened, FileSaved, FileClosed, Diagnostic, WorkspaceOpened, WorkspaceClosed)
+HTTP Client: Retry logic (3 attempts, 1s delay)
+Status Bar: $(database) devmem
+Unit Tests: 14 passing
+Build: TypeScript → CommonJS, zero errors
 
 ---
 
@@ -471,7 +544,7 @@ When development resumes, read:
 3. TASKS.md
 4. PROGRESS.md
 
-Then continue with Task: EXT-001
+Then continue with Task: TEST-001
 
 ---
 
@@ -500,10 +573,10 @@ Backend service is fully initialized with SQLite storage, alembic migrations, ev
 
 # HANDOFF TO NEXT SESSION
 
-Resume From: EXT-001
-Open Folder: extension/
-Create: VS Code extension skeleton with file/diagnostic event listeners
-Goal: Send editor events to the backend API automatically.
+Resume From: TEST-001
+Open Folder: backend/tests/
+Create: Pytest unit test suite for services and API endpoints
+Goal: Achieve stable test coverage for all backend layers.
 
 ---
 
@@ -522,7 +595,7 @@ CLI
 ██████████ 100%
 
 VS Code Extension
-□□□□□□□□□□ 0%
+██████████ 100%
 
 AI
 ██████████ 100%
@@ -531,7 +604,7 @@ Testing
 ██████░░░░ 60%
 
 Overall
-███████░░░ 70%
+████████░░ 80%
 
 ------------------------------------------------------------
 

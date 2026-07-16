@@ -22,11 +22,11 @@ Only ONE task should ever be marked [>] at a time.
 
 Overall Progress
 
-■■■■■■■□□□ 70%
+■■■■■■■■□□ 80%
 
 Current Phase
 
-Phase 3 — VS Code Extension
+Phase 4 — Testing & Polish
 
 Current Sprint
 
@@ -388,31 +388,31 @@ Capture editor events.
 
 ## Extension
 
-- [ ] Initialize extension
-- [ ] Activate extension
-- [ ] Register listeners
+- [x] Initialize extension
+- [x] Activate extension
+- [x] Register listeners
 
 ---
 
 ## File Events
 
-- [ ] Open
-- [ ] Save
-- [ ] Close
+- [x] Open
+- [x] Save
+- [x] Close
 
 ---
 
 ## Diagnostics
 
-- [ ] Capture errors
-- [ ] Capture warnings
+- [x] Capture errors
+- [x] Capture warnings
 
 ---
 
 ## API
 
-- [ ] Send events
-- [ ] Retry failed requests
+- [x] Send events
+- [x] Retry failed requests
 
 Checkpoint
 
