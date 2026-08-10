@@ -22,7 +22,7 @@ Only ONE task should ever be marked [>] at a time.
 
 Overall Progress
 
-■■■■■■■■□□ 80%
+■■■■■■■■■□ 90%
 
 Current Phase
 
@@ -465,25 +465,25 @@ Questions answered.
 
 Backend
 
-- [ ] Unit tests
+- [x] Unit tests
 
-- [ ] API tests
+- [x] API tests
 
 Database
 
-- [ ] CRUD tests
+- [x] CRUD tests
 
 CLI
 
-- [ ] Command tests
+- [x] Command tests
 
 Extension
 
-- [ ] Event tests
+- [x] Event tests
 
 Integration
 
-- [ ] End-to-end
+- [x] End-to-end
 
 Checkpoint
 

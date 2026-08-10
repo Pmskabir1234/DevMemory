@@ -11,9 +11,9 @@ TEST_DB_URL = "sqlite:///./test_devmem.db"
 PORT = 8001
 BASE_URL = f"http://127.0.0.1:{PORT}"
 
-def run_cmd(cmd, env=None):
+def run_cmd(cmd, env=None, cwd=None):
     print(f"Running: {cmd}")
-    p = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+    p = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env, cwd=cwd)
     if p.returncode != 0:
         print(f"Error executing: {cmd}")
         print("STDOUT:", p.stdout)
@@ -49,21 +49,24 @@ def main():
     env["LOG_LEVEL"] = "WARNING"
     
     # Ensure any old test database is removed
+    if os.path.exists("backend/test_devmem.db"):
+        os.remove("backend/test_devmem.db")
     if os.path.exists("test_devmem.db"):
         os.remove("test_devmem.db")
         
     # 2. Run alembic migrations on test db
     print("Running database migrations on test DB...")
-    run_cmd("..\\venv\\Scripts\\python.exe -m alembic upgrade head", env=env)
+    run_cmd(f'"{sys.executable}" -m alembic upgrade head', env=env, cwd="backend")
     
     # 3. Start FastAPI server
     print("Starting FastAPI backend server...")
     server_process = subprocess.Popen(
-        f"..\\venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port {PORT}",
+        f'"{sys.executable}" -m uvicorn app.main:app --host 127.0.0.1 --port {PORT}',
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=env
+        env=env,
+        cwd="backend"
     )
     
     # Wait for server to start
@@ -231,12 +234,14 @@ def main():
             subprocess.run(f"taskkill /F /T /PID {server_process.pid}", shell=True)
             
         # Clean up database file
-        if os.path.exists("test_devmem.db"):
-            try:
-                os.remove("test_devmem.db")
-                print("Test database cleaned up.")
-            except Exception as ex:
-                print(f"Error removing test db: {ex}")
+        time.sleep(0.5)
+        for db_file in ["backend/test_devmem.db", "test_devmem.db"]:
+            if os.path.exists(db_file):
+                try:
+                    os.remove(db_file)
+                    print(f"Test database {db_file} cleaned up.")
+                except Exception as ex:
+                    print(f"Error removing test db {db_file}: {ex}")
 
 if __name__ == "__main__":
     main()
