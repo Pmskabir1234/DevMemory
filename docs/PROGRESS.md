@@ -5,11 +5,123 @@ Version: 1.0
 
 ------------------------------------------------------------
 
-Session Number: 008
+Session Number: 009
 
 Date: 2026-08-16
 
 Duration: 30 minutes
+
+Completed Tasks:
+
+- BUG-002 (New sessions not getting summaries — generalised auto-summarise solution)
+
+Current Task:
+
+- None (Next up: TEST-001 Backend Unit Tests)
+
+Files Modified:
+
+- backend/app/services/event.py
+- backend/app/services/search.py
+
+Decisions Made:
+
+- Moved summary generation to the event ingestion layer (_auto_close_stale_sessions in event.py). Every call to record_event checks if any unsummarised session for that workspace has exceeded the timeout, and if so summarises it inline before deciding where to attach the new event. This means sessions are summarised automatically the moment the developer resumes activity after a break — no explicit end call needed, ever.
+- For intent-based queries (last file, resume, pending work), skip the LLM entirely and route directly to the deterministic local answer. The LLM only has access to historical session summaries and gives wrong answers for real-time factual queries like "what file did I modify last?".
+- LLM is still used for open-ended contextual questions ("what did I work on?", "show my history") where synthesising across summaries adds value.
+
+Problems Encountered:
+
+- Sessions were only summarised when POST /api/sessions/active/end was called, which VS Code extension never calls automatically.
+- SQLite doesn't support datetime arithmetic in WHERE clauses — had to filter stale sessions in Python after fetching candidates.
+- LLM was answering "what file did I modify last?" with the last file from session summaries, not the actual last event in the DB — giving a stale/wrong answer.
+
+Solutions:
+
+- _auto_close_stale_sessions() called at the top of every record_event() — zero-effort generalised auto-close.
+- Python-side staleness filter: (current_time - session.end_time).total_seconds() > timeout.
+- Intent routing in answer_query(): last-file/resume/pending → deterministic local answer; everything else → LLM then fallback.
+
+Next Task:
+
+- TEST-001 (Backend Unit Tests)
+
+Estimated Next Session:
+
+- 60 minutes
+
+Commit Hash:
+
+- -
+
+Notes:
+
+- Full lifecycle verified: 3 sessions created, 2 auto-summarised on next event, all queries return correct answers. Active session correctly stays unsummarised until it goes stale.
+
+------------------------------------------------------------
+
+Duration: 30 minutes
+
+Completed Tasks:
+
+- BUG-001 (Search returning "no matching sessions" for all queries)
+
+Current Task:
+
+- None (Next up: TEST-001 Backend Unit Tests)
+
+Files Modified:
+
+- backend/app/services/search.py
+- backend/app/services/session.py
+- backend/app/api/endpoints/sessions.py
+- backend/app/main.py
+- cli/devmem/client.py
+- cli/devmem/main.py
+- docs/TASKS.md
+- docs/PROGRESS.md
+
+Decisions Made:
+
+- Removed "file", "files", "last", "recent" and other overly-aggressive stop-words that were stripping search intent from queries.
+- Added intent detection functions (_is_last_file_query, _is_resume_query, _is_pending_query) for direct answers without requiring keyword matches.
+- search_sessions now runs 3 passes: (1) summarised+keyword, (2) all-sessions+files column, (3) unconditional recent fallback — never returns empty.
+- _local_answer now accepts the db session so it can query the events table for the exact last-modified file.
+- Added _summarise_session() and summarise_unsummarised() to session.py for backfilling stale sessions.
+- Added POST /api/sessions/summarise-all endpoint for on-demand backfill.
+- Added startup lifespan hook in main.py to auto-backfill summaries on every server start.
+- Added devmem summarise CLI command.
+- Fixed keyword tokeniser to handle file paths (security.py → also indexes "security").
+
+Problems Encountered:
+
+- All 3 sessions in the DB had no summaries because they timed out without an explicit end call.
+- search_sessions required summary.isnot(None) but all sessions were unsummarised → always empty.
+- "file" was in the stop-words list so "what file did I modify last?" lost its key intent word.
+- _local_answer had no db access so could not query events table for the true last-modified file.
+
+Solutions:
+
+- Retroactively summarised all 3 sessions via summarise_unsummarised().
+- Three-pass search strategy always returns something meaningful.
+- Intent-based routing in _local_answer for file/resume/pending queries.
+- DB reference passed through answer_query → _local_answer.
+
+Next Task:
+
+- TEST-001 (Backend Unit Tests)
+
+Estimated Next Session:
+
+- 60 minutes
+
+Commit Hash:
+
+- -
+
+Notes:
+
+- All 10 query types verified: last-file, yesterday, resume, today's files, pending, this week, filename search. LLM (HF free tier exhausted) gracefully falls back to local deterministic answers for all queries.
 
 Completed Tasks:
 

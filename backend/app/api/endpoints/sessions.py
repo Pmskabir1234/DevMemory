@@ -9,7 +9,12 @@ from app.schemas.session import (
     SessionResponse,
     SessionTerminateResponse,
 )
-from app.services.session import end_active_session, get_active_session, get_sessions
+from app.services.session import (
+    end_active_session,
+    get_active_session,
+    get_sessions,
+    summarise_unsummarised,
+)
 
 router = APIRouter()
 
@@ -75,3 +80,34 @@ def terminate_active_session(
     return SessionTerminateResponse(
         status="terminated", session_id=ended.id, summary_generated=True
     )
+
+
+@router.post("/summarise-all", response_model=List[SessionResponse])
+def backfill_summaries(db: Session = Depends(get_db)):
+    """
+    Generate summaries for every session that doesn't have one yet.
+    Useful after a server restart or when sessions timed-out without an explicit end.
+    """
+    updated = summarise_unsummarised(db)
+    response = []
+    for s in updated:
+        files_list = []
+        if s.files:
+            try:
+                files_list = json.loads(s.files)
+            except Exception:
+                files_list = []
+        response.append(
+            SessionResponse(
+                id=s.id,
+                start_time=s.start_time,
+                end_time=s.end_time,
+                duration_seconds=s.duration_seconds,
+                workspace=s.workspace,
+                files=files_list,
+                summary=s.summary,
+                pending_work=s.pending_work,
+                decisions=s.decisions,
+            )
+        )
+    return response

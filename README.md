@@ -11,7 +11,7 @@
 
 ---
 
-## Table of Contents
+## Table of Contents:
 
 - [Vision & Problem Statement](#vision--problem-statement)
 - [Key Features](#key-features)
@@ -30,7 +30,7 @@
 
 ---
 
-## Vision & Problem Statement
+## Vision & Problem Statement:
 
 Developers constantly lose context because software development is fragmented across dozens of tools: Git remembers commits, VS Code remembers open tabs, the terminal remembers command history, and AI chatbots remember conversations—but **no single tool remembers your entire workflow**.
 
@@ -99,7 +99,7 @@ For detailed architecture, sequence diagrams, and design records, see [docs/ARCH
 
 ---
 
-## Project Layout
+## Project Layout:
 
 ```
 Dev Memory/

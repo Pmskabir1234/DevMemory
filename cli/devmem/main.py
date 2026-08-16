@@ -184,6 +184,23 @@ def version() -> None:
     console.print(f"Backend: [dim]{config.BACKEND_URL}[/dim]")
 
 
+@app.command()
+def summarise() -> None:
+    """Generate summaries for any sessions that don't have one yet (backfill)."""
+    try:
+        updated = api.summarise_all()
+    except Exception as exc:
+        _handle_error(exc)
+        return
+
+    if not updated:
+        display.info("All sessions already have summaries.")
+        return
+
+    display.success(f"Generated summaries for {len(updated)} session(s).")
+    display.print_sessions_table(updated)
+
+
 
 # Entry point
 def main() -> None:

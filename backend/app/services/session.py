@@ -37,17 +37,42 @@ def get_active_session(db: DBSession, workspace: str | None = None) -> Session |
 def end_active_session(db: DBSession, workspace: str | None = None) -> Session | None:
     session = get_active_session(db, workspace)
     if session:
-        # Retrieve all events associated with this session ordered chronologically
-        events = db.query(Event).filter(Event.session_id == session.id).order_by(Event.timestamp.asc()).all()
-
-        # Generate summary (AI or fallback)
-        ai_data = generate_ai_summary(session, events)
-        session.summary = ai_data.get("summary")
-        session.pending_work = ai_data.get("pending_work")
-        session.decisions = ai_data.get("decisions")
-
-        db.add(session)
-        db.commit()
-        db.refresh(session)
-        return session
+        return _summarise_session(db, session)
     return None
+
+
+def _summarise_session(db: DBSession, session: Session) -> Session:
+    """Generate and persist a summary for a single session. Returns the updated session."""
+    events = (
+        db.query(Event)
+        .filter(Event.session_id == session.id)
+        .order_by(Event.timestamp.asc())
+        .all()
+    )
+    ai_data = generate_ai_summary(session, events)
+    session.summary = ai_data.get("summary")
+    session.pending_work = ai_data.get("pending_work")
+    session.decisions = ai_data.get("decisions")
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def summarise_unsummarised(db: DBSession) -> List[Session]:
+    """
+    Find all sessions that have no summary yet and generate one for each.
+    Used at startup or on-demand to backfill missing summaries.
+    Returns the list of sessions that were summarised.
+    """
+    pending = db.query(Session).filter(Session.summary.is_(None)).all()
+    updated: List[Session] = []
+    for session in pending:
+        try:
+            updated.append(_summarise_session(db, session))
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Could not summarise session %s: %s", session.id, exc
+            )
+    return updated

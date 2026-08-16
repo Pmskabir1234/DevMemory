@@ -92,3 +92,8 @@ def search(query: str, workspace: str | None = None) -> dict:
     if workspace:
         params["workspace"] = workspace
     return _request("/api/search", params=params)
+
+
+def summarise_all() -> list:
+    """POST /api/sessions/summarise-all — backfill summaries for all unsummarised sessions."""
+    return _request("/api/sessions/summarise-all", method="POST") or []

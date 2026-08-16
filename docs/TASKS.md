@@ -448,11 +448,17 @@ Support
 
 - [x] Which file did I edit last?
 
+- [x] What file did I modify last?
+
 - [x] Resume previous work
 
 - [x] Show today's changes
 
 - [x] Show authentication work
+
+- [x] Show pending work
+
+- [x] Search by filename (e.g. security.py)
 
 Checkpoint
 
