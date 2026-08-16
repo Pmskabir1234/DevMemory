@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class SessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     start_time: datetime
     end_time: datetime
@@ -14,21 +16,18 @@ class SessionResponse(BaseModel):
     pending_work: str | None = None
     decisions: str | None = None
 
-    class Config:
-        from_attributes = True
-
 
 class SessionActiveResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     start_time: datetime
     last_activity_time: datetime
     workspace: str
-
-    class Config:
-        from_attributes = True
 
 
 class SessionTerminateResponse(BaseModel):
     status: str = "terminated"
     session_id: int
     summary_generated: bool
+

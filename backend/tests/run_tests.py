@@ -234,14 +234,20 @@ def main():
             subprocess.run(f"taskkill /F /T /PID {server_process.pid}", shell=True)
             
         # Clean up database file
-        time.sleep(0.5)
+        time.sleep(1.0)
         for db_file in ["backend/test_devmem.db", "test_devmem.db"]:
             if os.path.exists(db_file):
-                try:
-                    os.remove(db_file)
-                    print(f"Test database {db_file} cleaned up.")
-                except Exception as ex:
-                    print(f"Error removing test db {db_file}: {ex}")
+                removed = False
+                for _ in range(5):
+                    try:
+                        os.remove(db_file)
+                        print(f"Test database {db_file} cleaned up.")
+                        removed = True
+                        break
+                    except Exception:
+                        time.sleep(0.5)
+                if not removed and os.path.exists(db_file):
+                    print(f"Note: Could not immediately remove {db_file} (held by process).")
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class EventBase(BaseModel):
@@ -17,9 +17,9 @@ class EventCreate(EventBase):
 
 
 class EventResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
     status: str = "recorded"
     session_id: int | None
 
-    class Config:
-        populate_by_name = True
