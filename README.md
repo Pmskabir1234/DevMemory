@@ -271,7 +271,6 @@ $ devmem resume
   - Created refresh token rotation middleware
 
   Pending Work:
-  - Add unit tests for token expiration
   - Implement logout token invalidation blacklist
 ```
 
